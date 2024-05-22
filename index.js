@@ -165,8 +165,8 @@ import express from "express";
 
 const app = express();
 
-app.get("/", (req, res) => {
-  let { url } = req.query;
+app.get("/", async (req, res) => {
+  const { url } = req.query;
 
   if (!url) {
     return res.status(400).send("Please provide a URL");
@@ -183,41 +183,44 @@ app.get("/", (req, res) => {
     }
   }
 
-  console.log(url);
-
   if (!url.startsWith("https://") && !url.startsWith("http://")) {
     return res.status(400).send("Please provide a valid URL");
   }
 
-  connect({
-    turnstile: true,
-    fingerprint: true,
-    headless: "auto",
-    proxy: {
-      host: process.env.PROXY_HOST,
-      port: process.env.PROXY_PORT,
-      username: process.env.PROXY_USERNAME,
-      password: process.env.PROXY_PASSWORD,
-    },
-  }).then(async (response) => {
+  try {
+    const response = await connect({
+      turnstile: true,
+      fingerprint: true,
+      headless: "auto",
+      proxy: {
+        host: process.env.PROXY_HOST,
+        port: process.env.PROXY_PORT,
+        username: process.env.PROXY_USERNAME,
+        password: process.env.PROXY_PASSWORD,
+      },
+      customConfig: {
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      },
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--single-process", "--no-zygote"],
+    });
+
     const { page, browser } = response;
 
-    try {
-      //set user agent
-      await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-      await page.goto(url);
-      await page.waitForSelector("body");
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+    await page.goto(url, {
+      timeout: 0,
+    });
 
-      const html = await page.evaluate(() => document.documentElement.outerHTML);
+    await page.waitForSelector("body");
 
-      res.send(html);
+    const html = await page.evaluate(() => document.documentElement.outerHTML);
 
-      await browser.close();
-    } catch (error) {
-      res.send(error);
-      await browser.close();
-    }
-  });
+    res.send(html);
+
+    await browser.close();
+  } catch (error) {
+    res.send(error);
+  }
 });
 
 app.listen(3000, () => {
